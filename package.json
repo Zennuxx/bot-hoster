@@ -1,0 +1,13 @@
+{
+  "name": "bot-hoster",
+  "version": "1.0.0",
+  "description": "24/7 Python Bot Hosting Platform",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  }
+}

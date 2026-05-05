@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BotHoster - 24/7 Python Bot Hosting</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <h1>BotHoster</h1>
+            </div>
+            <p class="subtitle">Host your Python bots 24/7 on Render</p>
+        </div>
+
+        <div class="main-card">
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <h3>Select Python File</h3>
+                        <p>Drop your .py file here or click to browse</p>
+                        <input type="file" id="fileInput" accept=".py" hidden>
+                        <button class="browse-btn" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-folder-open"></i> Browse Files
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="selected-file">
+                        <i class="fas fa-file-code"></i>
+                        <div class="file-details">
+                            <span class="file-name" id="fileName"></span>
+                            <span class="file-size" id="fileSize"></span>
+                        </div>
+                        <button class="remove-file" onclick="removeFile()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button class="host-btn" id="hostBtn" disabled>
+                    <i class="fas fa-server"></i> Host 24/7
+                </button>
+            </div>
+
+            <div class="hosted-bots-section" id="hostedBotsSection">
+                <h2>
+                    <i class="fas fa-list-ul"></i>
+                    Hosted Bots
+                    <span class="bot-count" id="botCount">0</span>
+                </h2>
+                <div class="bots-list" id="botsList">
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>No bots hosted yet</p>
+                        <span>Upload a Python file to get started</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Powered by <i class="fas fa-bolt"></i> Render</p>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p id="loadingText">Deploying your bot...</p>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="toast" id="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toastMessage"></span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
