@@ -1,7 +1,6 @@
 // State management
 let hostedBots = JSON.parse(localStorage.getItem('hostedBots') || '[]');
 let selectedFile = null;
-let currentDeployId = null;
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -20,33 +19,56 @@ const toastMessage = document.getElementById('toastMessage');
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     renderBots();
+    setupEventListeners();
 });
 
-// File upload handlers
-uploadArea.addEventListener('click', () => {
-    fileInput.click();
-});
+function setupEventListeners() {
+    // Upload area click
+    uploadArea.addEventListener('click', (e) => {
+        if (e.target !== uploadArea.querySelector('button')) {
+            fileInput.click();
+        }
+    });
 
-uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.classList.add('drag-over');
-});
+    // Browse button
+    const browseBtn = uploadArea.querySelector('.browse-btn');
+    if (browseBtn) {
+        browseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.click();
+        });
+    }
 
-uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('drag-over');
-});
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            handleFile(file);
+        }
+    });
 
-uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    handleFile(file);
-});
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('drag-over');
+    });
 
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    handleFile(file);
-});
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            handleFile(file);
+        }
+    });
+
+    // Host button
+    hostBtn.addEventListener('click', deployBot);
+}
 
 function handleFile(file) {
     if (!file) return;
@@ -59,16 +81,28 @@ function handleFile(file) {
     selectedFile = file;
     fileName.textContent = file.name;
     fileSize.textContent = formatFileSize(file.size);
+    
+    // Show file info, hide upload content
     fileInfo.style.display = 'block';
-    uploadArea.querySelector('.upload-content').style.display = 'none';
+    const uploadContent = uploadArea.querySelector('.upload-content');
+    if (uploadContent) {
+        uploadContent.style.display = 'none';
+    }
+    
     hostBtn.disabled = false;
+    console.log('File selected:', file.name);
 }
 
 function removeFile() {
     selectedFile = null;
     fileInput.value = '';
     fileInfo.style.display = 'none';
-    uploadArea.querySelector('.upload-content').style.display = 'flex';
+    
+    const uploadContent = uploadArea.querySelector('.upload-content');
+    if (uploadContent) {
+        uploadContent.style.display = 'flex';
+    }
+    
     hostBtn.disabled = true;
 }
 
@@ -80,18 +114,15 @@ function formatFileSize(bytes) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-// Host button handler
-hostBtn.addEventListener('click', async () => {
+async function deployBot() {
     if (!selectedFile) return;
     
-    showLoading(true, 'Preparing your bot for deployment...');
+    showLoading(true, 'Deploying your bot...');
+    hostBtn.disabled = true;
     
     try {
         const fileContent = await readFileAsBase64(selectedFile);
         
-        showLoading(true, 'Deploying to Render...');
-        
-        // Call our API endpoint
         const response = await fetch('/api/deploy', {
             method: 'POST',
             headers: {
@@ -103,11 +134,11 @@ hostBtn.addEventListener('click', async () => {
             }),
         });
         
-        if (!response.ok) {
-            throw new Error('Deployment failed');
-        }
-        
         const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Deployment failed');
+        }
         
         // Add to hosted bots
         const newBot = {
@@ -121,19 +152,19 @@ hostBtn.addEventListener('click', async () => {
         hostedBots.unshift(newBot);
         saveBots();
         renderBots();
-        
         removeFile();
+        
         showToast('Bot deployed successfully!', 'success');
         
     } catch (error) {
         console.error('Deployment error:', error);
-        showToast('Failed to deploy bot. Please try again.', 'error');
+        showToast(error.message || 'Failed to deploy bot', 'error');
     } finally {
         showLoading(false);
+        hostBtn.disabled = false;
     }
-});
+}
 
-// Read file as base64
 function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -146,20 +177,23 @@ function readFileAsBase64(file) {
     });
 }
 
-// Stop bot handler
 async function stopBot(botId) {
     const bot = hostedBots.find(b => b.id === botId);
     if (!bot) return;
     
+    if (!confirm(`Stop hosting ${bot.fileName}?`)) return;
+    
     showLoading(true, 'Stopping bot...');
     
     try {
-        // Call API to stop the service
-        await fetch(`/api/stop?serviceId=${bot.serviceId}`, {
+        const response = await fetch(`/api/stop?serviceId=${bot.serviceId}`, {
             method: 'DELETE',
         });
         
-        // Remove from list
+        if (!response.ok) {
+            throw new Error('Failed to stop bot');
+        }
+        
         hostedBots = hostedBots.filter(b => b.id !== botId);
         saveBots();
         renderBots();
@@ -168,13 +202,12 @@ async function stopBot(botId) {
         
     } catch (error) {
         console.error('Stop error:', error);
-        showToast('Failed to stop bot. Please try again.', 'error');
+        showToast('Failed to stop bot', 'error');
     } finally {
         showLoading(false);
     }
 }
 
-// Render bots list
 function renderBots() {
     botCount.textContent = hostedBots.length;
     
@@ -206,19 +239,16 @@ function renderBots() {
     `).join('');
 }
 
-// Save to localStorage
 function saveBots() {
     localStorage.setItem('hostedBots', JSON.stringify(hostedBots));
 }
 
-// Escape HTML
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// Show loading overlay
 function showLoading(show, text = 'Loading...') {
     if (show) {
         loadingText.textContent = text;
@@ -228,7 +258,6 @@ function showLoading(show, text = 'Loading...') {
     }
 }
 
-// Show toast notification
 function showToast(message, type = 'success') {
     toastMessage.textContent = message;
     toast.className = 'toast';
@@ -241,3 +270,6 @@ function showToast(message, type = 'success') {
         toast.classList.remove('show');
     }, 3000);
 }
+
+// Make stopBot available globally for onclick handlers
+window.stopBot = stopBot;
