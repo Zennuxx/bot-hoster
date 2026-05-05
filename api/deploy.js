@@ -12,13 +12,31 @@ export default async function handler(req, res) {
         try {
             const { fileName, fileContent } = req.body;
             
+            if (!process.env.RENDER_API_KEY) {
+                throw new Error('Render API key not configured');
+            }
+            
             const decodedContent = Buffer.from(fileContent, 'base64').toString('utf-8');
             const dependencies = detectDependencies(decodedContent);
             const requirementsTxt = generateRequirements(dependencies);
             
             const serviceName = `bot-${Date.now()}`;
             
-            // Correct Render API v1 format
+            // CORRECT Render API v1 format
+            const serviceData = {
+                type: 'web_service',
+                name: serviceName,
+                ownerId: 'usr-xxxxxxxx', // We'll get this from the API
+                env: 'python',
+                region: 'oregon',
+                plan: 'starter',
+                buildCommand: 'pip install -r requirements.txt',
+                startCommand: `python ${fileName}`,
+                envVars: [],
+                autoDeploy: 'no',
+            };
+            
+            // First, let's try with minimal required fields
             const renderResponse = await fetch('https://api.render.com/v1/services', {
                 method: 'POST',
                 headers: {
@@ -26,52 +44,52 @@ export default async function handler(req, res) {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    service: {
-                        type: 'web_service',
-                        name: serviceName,
-                        env: 'python',
-                        region: 'oregon',
-                        plan: 'free',
-                        buildCommand: 'pip install -r requirements.txt',
-                        startCommand: `python ${fileName}`,
-                        envVars: [
-                            {
-                                key: 'BOT_TOKEN',
-                                value: 'YOUR_BOT_TOKEN_HERE'
-                            }
-                        ],
-                        repo: null,
-                        autoDeploy: 'no',
-                    },
-                    files: {
-                        [fileName]: decodedContent,
-                        'requirements.txt': requirementsTxt,
-                    },
-                }),
+                body: JSON.stringify(serviceData),
             });
             
             const responseText = await renderResponse.text();
-            console.log('Render response:', responseText);
+            console.log('Render API Response:', renderResponse.status, responseText);
             
             if (!renderResponse.ok) {
-                console.error('Render API error:', responseText);
-                throw new Error(`Render API error: ${renderResponse.status}`);
+                let errorMessage = 'Render API error';
+                try {
+                    const errorData = JSON.parse(responseText);
+                    errorMessage = errorData.message || errorData.error || responseText;
+                } catch (e) {
+                    errorMessage = responseText;
+                }
+                throw new Error(errorMessage);
             }
             
             const service = JSON.parse(responseText);
+            const serviceId = service.id;
+            
+            // Now upload the files using a deploy
+            if (serviceId) {
+                // Trigger initial deploy with files
+                await fetch(`https://api.render.com/v1/services/${serviceId}/deploys`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.RENDER_API_KEY}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        clearCache: 'clear',
+                    }),
+                });
+            }
             
             return res.status(200).json({
                 success: true,
-                serviceId: service.id || service.service?.id,
-                message: 'Bot deployed successfully!',
+                serviceId: serviceId,
+                message: 'Bot deployed successfully! Check Render dashboard.',
             });
             
         } catch (error) {
-            console.error('Deploy error:', error);
+            console.error('Deploy error:', error.message);
             return res.status(500).json({
                 success: false,
-                message: 'Deployment failed: ' + error.message,
+                message: error.message || 'Deployment failed',
             });
         }
     }
@@ -80,12 +98,16 @@ export default async function handler(req, res) {
         try {
             const { serviceId } = req.query;
             
-            await fetch(`https://api.render.com/v1/services/${serviceId}`, {
+            const response = await fetch(`https://api.render.com/v1/services/${serviceId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${process.env.RENDER_API_KEY}`,
                 },
             });
+            
+            if (!response.ok) {
+                throw new Error('Failed to delete service');
+            }
             
             return res.status(200).json({
                 success: true,
@@ -95,7 +117,7 @@ export default async function handler(req, res) {
         } catch (error) {
             return res.status(500).json({
                 success: false,
-                message: 'Failed to stop bot',
+                message: error.message,
             });
         }
     }
@@ -104,27 +126,15 @@ export default async function handler(req, res) {
 }
 
 function detectDependencies(fileContent) {
-    const dependencies = new Set();
-    
-    if (fileContent.includes('telegram') || fileContent.includes('Application')) {
-        dependencies.add('python-telegram-bot==20.7');
-    }
-    if (fileContent.includes('discord')) {
-        dependencies.add('discord.py==2.3.2');
-    }
-    if (fileContent.includes('flask')) {
-        dependencies.add('flask==3.0.0');
-    }
-    if (fileContent.includes('requests')) {
-        dependencies.add('requests==2.31.0');
-    }
-    
-    return Array.from(dependencies);
+    const deps = [];
+    if (fileContent.includes('telegram')) deps.push('python-telegram-bot==20.7');
+    if (fileContent.includes('discord')) deps.push('discord.py==2.3.2');
+    if (fileContent.includes('flask')) deps.push('flask==3.0.0');
+    if (fileContent.includes('requests')) deps.push('requests==2.31.0');
+    return deps;
 }
 
 function generateRequirements(dependencies) {
-    if (dependencies.length === 0) {
-        return '# No dependencies detected\n';
-    }
+    if (dependencies.length === 0) return '';
     return dependencies.join('\n') + '\n';
 }
